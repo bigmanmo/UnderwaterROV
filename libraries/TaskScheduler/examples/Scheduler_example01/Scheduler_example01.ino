@@ -58,7 +58,7 @@ void t3Callback() {
 }
 
 void setup () {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println("Scheduler TEST");
   
   runner.init();
