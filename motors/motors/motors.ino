@@ -2,9 +2,9 @@
 #include <Servo.h>
 #include <PS2X_lib.h>
 
-#define PS2_DAT        2  //14    
-#define PS2_CMD        6  //15
-#define PS2_SEL        5  //16
+#define PS2_DAT        6  //14    
+#define PS2_CMD        2  //15
+#define PS2_SEL        3  //16
 #define PS2_CLK        4  //17
 
 //#define pressures   true
@@ -28,6 +28,8 @@ int initial_y = 0;
 int initial_z = 0;
 int x_val_diff = 0;
 int z_val_diff = 0;
+int x_current = 0;
+int z_current = 0;
 
 // Set everything up
 void setup()
@@ -78,6 +80,7 @@ void loop()
         else
         {
           motorR.write(95);
+          motorL.write(95);
         }
        }
        else if(ps2x.Button(PSB_L1))
@@ -109,8 +112,8 @@ void loop()
        if(z_current != initial_z)
        {
         //Need to find the zero point of the bottom motor and just add or subtract based on the analog stick
-          z_val_diff = (z_current - initial_z) / 2
-          motorB.write();
+          z_val_diff = (z_current - initial_z) / 5;
+          motorB.write(80 + z_val_diff);
        }
 
        delay(100);
