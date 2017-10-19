@@ -2,10 +2,10 @@
 #include <Servo.h>
 #include <PS2X_lib.h>
 
-#define PS2_DAT        6  //14    
-#define PS2_CMD        2  //15
-#define PS2_SEL        3  //16
-#define PS2_CLK        4  //17
+#define PS2_DAT        6  //yellowwhite    
+#define PS2_CMD        2  //orange, blue ground, whiteblue power, 
+#define PS2_SEL        3  //whitegreen
+#define PS2_CLK        4  //green
 
 //#define pressures   true
 #define pressures   false
@@ -40,6 +40,10 @@ void setup()
   motorR.attach(9);
   motorB.attach(10);
 
+  motorL.write(90);
+  motorR.write(90);
+  motorB.write(90);
+
   // Required for I/O from Serial monitor
  
   Serial.begin(9600);
@@ -60,8 +64,9 @@ void loop()
 {
        ps2x.read_gamepad(false, vibrate);
 
-       x_current = ps2x.Analog(PSS_LX);
-       z_current = ps2x.Analog(PSS_RY);
+       x_current = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
+       y_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+       z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
        
        if(ps2x.Button(PSB_R1))
        {
@@ -106,8 +111,8 @@ void loop()
        if(ps2x.ButtonReleased(PSB_L1) || ps2x.ButtonReleased(PSB_R1))
        {
         // Need to find zero point of these motors
-          motorR.write(1);
-          motorL.write(1);
+          motorR.write(90);
+          motorL.write(90);
        }
        if(z_current != initial_z)
        {
