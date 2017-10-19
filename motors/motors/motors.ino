@@ -27,8 +27,10 @@ int initial_x = 0;
 int initial_y = 0;
 int initial_z = 0;
 int x_val_diff = 0;
+int y_val_diff = 0;
 int z_val_diff = 0;
 int x_current = 0;
+int y_current = 0;
 int z_current = 0;
 
 // Set everything up
@@ -55,8 +57,14 @@ void setup()
   ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
   ps2x.read_gamepad(false, vibrate);
   initial_x = ps2x.Analog(PSS_LX);
+  Serial.println("initial x");
+  Serial.println(initial_x);
   initial_y = ps2x.Analog(PSS_LY);
+  Serial.println("initial y");
+  Serial.println(initial_y);
   initial_z = ps2x.Analog(PSS_RY);
+  Serial.println("initial z");
+  Serial.println(initial_z);
 }
 
 
@@ -65,8 +73,14 @@ void loop()
        ps2x.read_gamepad(false, vibrate);
 
        x_current = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
-       y_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+       Serial.println("current x");
+       Serial.println(x_current);
+       y_current = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
+       Serial.println("current y");
+       Serial.println(y_current);
        z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+       Serial.println("current z");
+       Serial.println(z_current);
        
        if(ps2x.Button(PSB_R1))
        {
@@ -118,10 +132,12 @@ void loop()
        {
         //Need to find the zero point of the bottom motor and just add or subtract based on the analog stick
           z_val_diff = (z_current - initial_z) / 5;
-          motorB.write(80 + z_val_diff);
+          motorB.write(95 + z_val_diff);
+          Serial.println("bottom mottor: ");
+          Serial.println(95 + z_val_diff);
        }
 
-       delay(100);
+       delay(1000);
 
 //     }
 }
