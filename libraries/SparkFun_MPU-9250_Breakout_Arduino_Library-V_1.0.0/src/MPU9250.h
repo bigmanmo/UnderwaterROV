@@ -249,6 +249,7 @@ class MPU9250
     void writeByte(uint8_t, uint8_t, uint8_t);
     uint8_t readByte(uint8_t, uint8_t);
     void readBytes(uint8_t, uint8_t, uint8_t, uint8_t *);
+	void magcalMPU9250(float * dest1, float * dest2);
 };  // class MPU9250
 
 #endif // _MPU9250_H_
