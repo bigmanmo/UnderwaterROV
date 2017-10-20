@@ -1,6 +1,7 @@
 // Need the Servo library
 #include <Servo.h>
 #include <PS2X_lib.h>
+#include <TaskScheduler.h>
 
 #define PS2_DAT        6  //yellowwhite    
 #define PS2_CMD        2  //orange, blue ground, whiteblue power, 
@@ -15,28 +16,110 @@
 #define forward_spin 95
 #define backward_spin 80
 
-PS2X ps2x;
+volatile PS2X ps2x;
 
 // This is our motor.
-Servo motorR;
-Servo motorL;
-Servo motorB;
+volatile Servo motorR;
+volatile Servo motorL;
+volatile Servo motorB;
 byte vibrate = 0;
 
-int initial_x = 0;
-int initial_y = 0;
-int initial_z = 0;
-int x_val_diff = 0;
-int y_val_diff = 0;
-int z_val_diff = 0;
-int x_current = 0;
-int y_current = 0;
-int z_current = 0;
+volatile int initial_x = 0;
+volatile int initial_y = 0;
+volatile int initial_z = 0;
+volatile int x_val_diff = 0;
+volatile int y_val_diff = 0;
+volatile int z_val_diff = 0;
+volatile int x_current = 0;
+volatile int y_current = 0;
+volatile int z_current = 0;
+
+// Callback methods prototypes
+void readGamepadCallback();
+void updateMotorBCallback();
+void updateMotorRLCallback();
+
+//Tasks
+Task readGamepad(50, TASK_FOREVER, &readGamepadCallback);
+Task updateMotorB(125, TASK_FOREVER, &updateMotorBCallback);
+Task updateMotorLR(125, TASK_FOREVER, &updateMotorRLCallback);
+
+Scheduler runner;
+
+void readGamepadCallback() {
+  ps2x.read_gamepad(false, vibrate);
+  
+  x_current = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
+  Serial.println("current x");
+  Serial.println(x_current);
+  y_current = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
+  Serial.println("current y");
+  Serial.println(y_current);
+  z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+  Serial.println("current z");
+  Serial.println(z_current);
+}
+
+void updateMotorBCallback() {
+  z_val_diff = (z_current - initial_z) / 5;
+  motorB.write(95 + z_val_diff);
+  Serial.println("bottom mottor: ");
+  Serial.println(95 + z_val_diff);
+}
+
+void updateMotorRLCallback() {
+  
+ if(ps2x.Button(PSB_R1)) 
+ {  
+   if(x_current > initial_x)
+   {
+      x_val_diff = (x_current - initial_x) / 5;
+      motorL.write(95);
+      motorR.write(95 + x_val_diff);
+    }
+    else if(x_current < initial_x)
+    {
+      x_val_diff = (initial_x - x_current) / 10;
+      motorL.write(95 + x_val_diff);
+      motorR.write(95);
+    }
+    else
+    {
+      motorR.write(95);
+      motorL.write(95);
+    }
+   }
+   else if(ps2x.Button(PSB_L1))
+   {
+    if(x_current < initial_x)
+    {
+      x_val_diff = (initial_x - x_current) / 10;
+      motorL.write(80);
+      motorR.write(80 - x_val_diff);
+    }
+    else if(x_current > initial_x)
+    {
+      x_val_diff = (x_current - initial_x) / 10;
+      motorL.write(80 - x_val_diff);
+      motorR.write(80);
+    }
+    else
+    {
+      motorR.write(80);
+      motorL.write(80);
+    }
+   }
+   if(!ps2x.Button(PSB_L1) && !ps2x.Button(PSB_R1))
+   {
+      motorR.write(90);
+      motorL.write(90);
+   }
+}
+
 
 // Set everything up
 void setup()
 {
-  
   // Put the motor to Arduino pin #9
   motorL.attach(8);
   motorR.attach(9);
@@ -65,80 +148,32 @@ void setup()
   initial_z = ps2x.Analog(PSS_RY);
   Serial.println("initial z");
   Serial.println(initial_z);
+  
+  runner.init();
+  Serial.println("Initialized scheduler");
+  runner.addTask(readGamepad);
+  runner.addTask(updateMotorB);
+  runner.addTask(updateMotorLR);
+
+  readGamepad.enable();
+  updateMotorB.enable();
+  updateMotorLR.enable();
 }
 
 
 void loop()
 {
-       ps2x.read_gamepad(false, vibrate);
-
-       x_current = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
-       Serial.println("current x");
-       Serial.println(x_current);
-       y_current = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
-       Serial.println("current y");
-       Serial.println(y_current);
-       z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
-       Serial.println("current z");
-       Serial.println(z_current);
-       
-       if(ps2x.Button(PSB_R1))
-       {
-        if(x_current > initial_x)
-        {
-          x_val_diff = (x_current - initial_x) / 5;
-          motorL.write(95);
-          motorR.write(95 + x_val_diff);
-        }
-        else if(x_current < initial_x)
-        {
-          x_val_diff = (initial_x - x_current) / 10;
-          motorL.write(95 + x_val_diff);
-          motorR.write(95);
-        }
-        else
-        {
-          motorR.write(95);
-          motorL.write(95);
-        }
-       }
-       else if(ps2x.Button(PSB_L1))
-       {
-        if(x_current < initial_x)
-        {
-          x_val_diff = (initial_x - x_current) / 10;
-          motorL.write(80);
-          motorR.write(80 - x_val_diff);
-        }
-        else if(x_current > initial_x)
-        {
-          x_val_diff = (x_current - initial_x) / 10;
-          motorL.write(80 - x_val_diff);
-          motorR.write(80);
-        }
-        else
-        {
-          motorR.write(80);
-          motorL.write(80);
-        }
-       }
-       if(ps2x.ButtonReleased(PSB_L1) || ps2x.ButtonReleased(PSB_R1))
-       {
-        // Need to find zero point of these motors
-          motorR.write(90);
-          motorL.write(90);
-       }
-       if(z_current != initial_z)
-       {
-        //Need to find the zero point of the bottom motor and just add or subtract based on the analog stick
-          z_val_diff = (z_current - initial_z) / 5;
-          motorB.write(95 + z_val_diff);
-          Serial.println("bottom mottor: ");
-          Serial.println(95 + z_val_diff);
-       }
-
-       delay(1000);
-
-//     }
+ //ps2x.read_gamepad(false, vibrate);
+ runner.execute();
+ /*if(z_current != initial_z)
+   {
+    //Need to find the zero point of the bottom motor and just add or subtract based on the analog stick
+      z_val_diff = (z_current - initial_z) / 5;
+      motorB.write(95 + z_val_diff);
+      Serial.println("bottom mottor: ");
+      Serial.println(95 + z_val_diff);
+   }*/
+  
+   //delay(1000);
 }
 
