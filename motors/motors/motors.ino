@@ -50,21 +50,21 @@ void readGamepadCallback() {
   ps2x.read_gamepad(false, vibrate);
   
   x_current = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
-  Serial.println("current x");
-  Serial.println(x_current);
+//  Serial.println("current x");
+//  Serial.println(x_current);
   y_current = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
-  Serial.println("current y");
-  Serial.println(y_current);
+//  Serial.println("current y");
+//  Serial.println(y_current);
   z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
-  Serial.println("current z");
-  Serial.println(z_current);
+//  Serial.println("current z");
+//  Serial.println(z_current);
 }
 
 void updateMotorBCallback() {
   z_val_diff = (z_current - initial_z) / 5;
-  motorB.write(95 + z_val_diff);
-  Serial.println("bottom mottor: ");
-  Serial.println(95 + z_val_diff);
+  motorB.write(90 + z_val_diff);
+//  Serial.println("bottom mottor: ");
+//  Serial.println(90 + z_val_diff);
 }
 
 void updateMotorRLCallback() {
@@ -74,19 +74,19 @@ void updateMotorRLCallback() {
    if(x_current > initial_x)
    {
       x_val_diff = (x_current - initial_x) / 5;
-      motorL.write(95);
-      motorR.write(95 + x_val_diff);
+      motorL.write(110);
+      motorR.write(110 + x_val_diff);
     }
     else if(x_current < initial_x)
     {
       x_val_diff = (initial_x - x_current) / 10;
-      motorL.write(95 + x_val_diff);
-      motorR.write(95);
+      motorL.write(110 + x_val_diff);
+      motorR.write(110);
     }
     else
     {
-      motorR.write(95);
-      motorL.write(95);
+      motorR.write(110);
+      motorL.write(110);
     }
    }
    else if(ps2x.Button(PSB_L1))
@@ -94,19 +94,19 @@ void updateMotorRLCallback() {
     if(x_current < initial_x)
     {
       x_val_diff = (initial_x - x_current) / 10;
-      motorL.write(80);
-      motorR.write(80 - x_val_diff);
+      motorL.write(70);
+      motorR.write(70 - x_val_diff);
     }
     else if(x_current > initial_x)
     {
       x_val_diff = (x_current - initial_x) / 10;
-      motorL.write(80 - x_val_diff);
-      motorR.write(80);
+      motorL.write(70 - x_val_diff);
+      motorR.write(70);
     }
     else
     {
-      motorR.write(80);
-      motorL.write(80);
+      motorR.write(70);
+      motorL.write(70);
     }
    }
    if(!ps2x.Button(PSB_L1) && !ps2x.Button(PSB_R1))
@@ -125,6 +125,7 @@ void setup()
   motorR.attach(9);
   motorB.attach(10);
 
+  // Initialize motors to lowest value
   motorL.write(90);
   motorR.write(90);
   motorB.write(90);
@@ -132,7 +133,7 @@ void setup()
   // Required for I/O from Serial monitor
  
   Serial.begin(9600);
-  Serial.println("before delay");
+//  Serial.println("before delay");
   delay(300);  //added delay to give wireless ps2 module some time to startup, before configuring it
    
   
