@@ -43,7 +43,7 @@ float temperature_c, temperature_f;
 double pressure_abs, pressure_relative, altitude_delta, pressure_baseline;
 
 // Create Variable to store altitude in (m) for calculations;
-double base_altitude = 1655.0; // Altitude of SparkFun's HQ in Boulder, CO. in (m)
+double base_altitude = 335.0; // Altitude of SparkFun's HQ in Boulder, CO. in (m)
 
 void setup() {
     Serial.begin(9600);
