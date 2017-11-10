@@ -18,7 +18,8 @@
 
 #define forward_spin 95
 #define backward_spin 80
-#define SerialDebug false  // Set to true to get Serial output for debugging
+#define SerialDebug true  // Set to true to get Serial output for debugging
+#define AHRS true
 
 volatile PS2X ps2x;
 
@@ -35,7 +36,7 @@ byte vibrate = 0;
 //Create variables to store results
 float temperature_c, temperature_f;
 double pressure_abs, pressure_relative, altitude_delta, pressure_baseline;
-
+double base_altitude = 335.0;
 
 volatile int initial_x = 0;
 volatile int initial_y = 0;
@@ -52,14 +53,14 @@ void readGamepadCallback();
 void updateMotorBCallback();
 void updateMotorRLCallback();
 void updateImuCallback();
-void updatePressureSensorCallback()
+void updatePressureSensorCallback();
 
 //Tasks
 Task readGamepad(50, TASK_FOREVER, &readGamepadCallback);
 Task updateMotorB(125, TASK_FOREVER, &updateMotorBCallback);
 Task updateMotorLR(125, TASK_FOREVER, &updateMotorRLCallback);
-Task updateImuTask(250, TASK_FOREVER, &updateImuCallback);
-Task updatePressureSensor(250, TASK_FOREVER, &updatePressureSensorCallback);
+Task updateImuTask(150, TASK_FOREVER, &updateImuCallback);
+Task updatePressureSensor(1000, TASK_FOREVER, &updatePressureSensorCallback);
 
 Scheduler runner;
 
@@ -75,12 +76,57 @@ void readGamepadCallback() {
   z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
 //  Serial.println("current z");
 //  Serial.println(z_current);
+  if(ps2x.ButtonPressed(PSB_START))
+  {
+    initial_x = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
+    Serial.println("initial x");
+    Serial.println(initial_x);
+    initial_y = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
+    Serial.println("initial y");
+    Serial.println(initial_y);
+    initial_z = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+    Serial.println("initial z");
+    Serial.println(initial_z);
+    updateMotorB.enable();
+    updateMotorLR.enable();
+    updateImuTask.disable();
+    updatePressureSensor.disable();
+  }
+  if(ps2x.ButtonPressed(PSB_SELECT))
+  {
+    if(updateMotorB.isEnabled())
+    {
+      updateMotorB.disable();
+      updateMotorLR.disable();
+      updateImuTask.enable();
+      updatePressureSensor.enable();
+    }
+    else
+    {
+      updateMotorB.enable();
+      updateMotorLR.enable();
+      updateImuTask.disable();
+      updatePressureSensor.disable();
+    }
+  }
+
 }
 
 void updateMotorBCallback() {
-  z_val_diff = (z_current - initial_z) / 5;
-  motorB.write(90 + z_val_diff);
-//  Serial.println("bottom mottor: ");
+  if((z_current - initial_z) < 25 && (z_current - initial_z) >= 0)
+  {
+   motorB.write(90); 
+  }
+  else if((z_current - initial_z) > -25 && (z_current-initial_z) < 0)
+  {
+    motorB.write(90);
+  }
+  else
+  {
+    z_val_diff = (z_current - initial_z) / 5;
+    motorB.write(90 + z_val_diff);
+  }
+
 //  Serial.println(90 + z_val_diff);
 }
 
@@ -134,7 +180,7 @@ void updateMotorRLCallback() {
 }
 
 void updateImuCallback() {
-  // If intPin goes high, all data registers have new data
+// If intPin goes high, all data registers have new data
   // On interrupt, check if data ready interrupt
   if (myIMU.readByte(MPU9250_ADDRESS, INT_STATUS) & 0x01)
   {
@@ -170,24 +216,17 @@ void updateImuCallback() {
 
   // Must be called before updating quaternions!
   myIMU.updateTime();
-
   MahonyQuaternionUpdate(myIMU.ax, myIMU.ay, myIMU.az, myIMU.gx * DEG_TO_RAD,
                          myIMU.gy * DEG_TO_RAD, myIMU.gz * DEG_TO_RAD, myIMU.my,
                          myIMU.mx, myIMU.mz, myIMU.deltat);
   filter.updateIMU(myIMU.gx, myIMU.gy, myIMU.gz, myIMU.ax, myIMU.ay, myIMU.az);
 
- 
-  else
-  {
     // Serial print and/or display at 0.5 s rate independent of data rates
     myIMU.delt_t = millis() - myIMU.count;
 
     // update LCD once per half-second independent of read rate
     if (myIMU.delt_t > 500)
     {
-      if(SerialDebug)
-      {
-
       myIMU.yaw   = atan2(2.0f * (*(getQ()+1) * *(getQ()+2) + *getQ()
                     * *(getQ()+3)), *getQ() * *getQ() + *(getQ()+1)
                     * *(getQ()+1) - *(getQ()+2) * *(getQ()+2) - *(getQ()+3)
@@ -201,30 +240,33 @@ void updateImuCallback() {
       myIMU.pitch *= RAD_TO_DEG;
       myIMU.yaw   *= RAD_TO_DEG;
 
-
+      // Declination of SparkFun Electronics (40°05'26.6"N 105°11'05.9"W) is
+      //   8° 30' E  ± 0° 21' (or 8.5°) on 2016-07-19
+      // - http://www.ngdc.noaa.gov/geomag-web/#declination
       myIMU.yaw  -= 9.62;
       myIMU.roll *= RAD_TO_DEG;
 
       if(SerialDebug)
       {
-        Serial.print("Yaw, Pitch, Roll: ");
-        Serial.print(myIMU.yaw, 2);
-        Serial.print(", ");
-        Serial.print(myIMU.pitch, 2);
-        Serial.print(", ");
-        Serial.println(myIMU.roll, 2);
+//        Serial.print("Yaw, Pitch, Roll: ");
+        Serial.print("Yaw: ");
+        Serial.println(myIMU.yaw, 2);
+//        Serial.print(", ");
+//        Serial.print(myIMU.pitch, 2);
+//        Serial.print(", ");
+//        Serial.println(myIMU.roll, 2);
 
-        Serial.print("rate = ");
-        Serial.print((float)myIMU.sumCount / myIMU.sum, 2);
-        Serial.println(" Hz");
+//        Serial.print("rate = ");
+//        Serial.print((float)myIMU.sumCount / myIMU.sum, 2);
+//        Serial.println(" Hz");
       }
 
 
       myIMU.count = millis();
       myIMU.sumCount = 0;
       myIMU.sum = 0;
-    }
-  }
+    } // if (myIMU.delt_t > 500)
+
 //  if((myIMU.yaw) > 5)
 //  {
 //     motorL.write(100);
@@ -241,23 +283,15 @@ void updateImuCallback() {
 //    motorL.write(90);
 //  }
 }
-}
 
-void updatePressureSensor() {
+void updatePressureSensorCallback() {
   // To measure to higher degrees of precision use the following sensor settings:
   // ADC_256 
   // ADC_512 
   // ADC_1024
   // ADC_2048
   // ADC_4096
-    
-  // Read temperature from the sensor in deg C. This operation takes about 
-  temperature_c = sensor.getTemperature(CELSIUS, ADC_512);
-  
-  // Read temperature from the sensor in deg F. Converting
-  // to Fahrenheit is not internal to the sensor.
-  // Additional math is done to convert a Celsius reading.
-  temperature_f = sensor.getTemperature(FAHRENHEIT, ADC_512);
+
   
   // Read pressure from the sensor in mbar.
   pressure_abs = sensor.getPressure(ADC_4096);
@@ -271,14 +305,7 @@ void updatePressureSensor() {
   // Taking our baseline pressure at the beginning we can find an approximate
   // change in altitude based on the differences in pressure.   
   altitude_delta = altitude(pressure_abs , pressure_baseline);
-  
-  // Report values via UART
-  Serial.print("Temperature C = ");
-  Serial.println(temperature_c);
-  
-  Serial.print("Temperature F = ");
-  Serial.println(temperature_f);
-  
+
   Serial.print("Pressure abs (mbar)= ");
   Serial.println(pressure_abs);
    
@@ -314,27 +341,16 @@ void setup()
   //setup pins and settings: GamePad(clock, command, attention, data, Pressures?, Rumble?) check for error
   ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
   ps2x.read_gamepad(false, vibrate);
-  initial_x = ps2x.Analog(PSS_LX);
-  Serial.println("initial x");
-  Serial.println(initial_x);
-  initial_y = ps2x.Analog(PSS_LY);
-  Serial.println("initial y");
-  Serial.println(initial_y);
-  initial_z = ps2x.Analog(PSS_RY);
-  Serial.println("initial z");
-  Serial.println(initial_z);
-  
-  runner.init();
-  Serial.println("Initialized scheduler");
-  runner.addTask(readGamepad);
-  runner.addTask(updateMotorB);
-  runner.addTask(updateMotorLR);
-  runner.addTask(updateImuTask);
-  runner.addTask(updatePressureSensor);
+//  initial_x = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
+//  Serial.println("initial x");
+//  Serial.println(initial_x);
+//  initial_y = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
+//  Serial.println("initial y");
+//  Serial.println(initial_y);
+//  initial_z = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+//  Serial.println("initial z");
+//  Serial.println(initial_z);
 
-  readGamepad.enable();
-  updateMotorB.enable();
-  updateMotorLR.enable();
   // MOTOR Setup **************************************************************************************************************************************
 
   // IMU Setup ****************************************************************************************************************************************
@@ -429,7 +445,7 @@ void setup()
     Serial.println(myIMU.magScale[0]);
     Serial.println(myIMU.magScale[1]);
     Serial.println(myIMU.magScale[2]);
-    delay(2000); // Add delay to see results before serial spew of data
+//    delay(2000); // Add delay to see results before serial spew of data
 
     if(SerialDebug)
     {
@@ -463,24 +479,26 @@ void setup()
     sensor.begin();
     
     pressure_baseline = sensor.getPressure(ADC_4096);
+
   
   // Pressure Sensor Setup *****************************************************************************************************************************
+
+    
+  runner.init();
+  Serial.println("Initialized scheduler");
+  runner.addTask(readGamepad);
+  runner.addTask(updateMotorB);
+  runner.addTask(updateMotorLR);
+  runner.addTask(updateImuTask);
+  runner.addTask(updatePressureSensor);
+
+  readGamepad.enable();
 }
 
 
 void loop()
 {
- //ps2x.read_gamepad(false, vibrate);
  runner.execute();
- /*if(z_current != initial_z)
-   {
-    //Need to find the zero point of the bottom motor and just add or subtract based on the analog stick
-      z_val_diff = (z_current - initial_z) / 5;
-      motorB.write(95 + z_val_diff);
-      Serial.println("bottom mottor: ");
-      Serial.println(95 + z_val_diff);
-   }*/
-  
    //delay(1000);
 }
 
