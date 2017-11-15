@@ -1,4 +1,3 @@
-// Need the Servo library
 #include <Servo.h>
 #include <PS2X_lib.h>
 #include <TaskScheduler.h>
@@ -7,6 +6,8 @@
 #include <SparkFun_MS5803_I2C.h>
 #include "quaternionFilters.h"
 #include "MPU9250.h"
+#include <pid_controller.h>
+
 
 #define PS2_DAT        6  //yellowwhite    
 #define PS2_CMD        2  //orange, blue ground, whiteblue power, 
@@ -22,12 +23,15 @@
 #define AHRS true
 
 volatile PS2X ps2x;
+double kp=0.01, ki=0.005, kd=0.005;
+
+PID mag_pid(kp, ki, kd, 5, -5);
+int mag_diff_values = 0;
 
 MS5803 sensor(ADDRESS_HIGH);
 
 MPU9250 myIMU;
 Madgwick filter;
-// This is our motor.
 volatile Servo motorR;
 volatile Servo motorL;
 volatile Servo motorB;
@@ -133,7 +137,8 @@ void updateMotorBCallback() {
 void updateMotorRLCallback() {
   
  if(ps2x.Button(PSB_R1)) 
- {  
+ {
+   Serial.println("R1 being pressed right now");
    if(x_current > initial_x)
    {
       x_val_diff = (x_current - initial_x) / 5;
@@ -154,6 +159,7 @@ void updateMotorRLCallback() {
    }
    else if(ps2x.Button(PSB_L1))
    {
+    Serial.println("L1 being pressed right now");
     if(x_current < initial_x)
     {
       x_val_diff = (initial_x - x_current) / 10;
@@ -267,6 +273,22 @@ void updateImuCallback() {
       myIMU.sum = 0;
     } // if (myIMU.delt_t > 500)
 
+
+    mag_diff_values = mag_pid.calculateOutput(0, myIMU.yaw);
+    Serial.println(mag_diff_values);
+    
+    if(mag_diff_values < 0)
+    {
+      motorL.write(90 - mag_diff_values);
+      motorR.write(90);
+    }
+    else if (mag_diff_values > 0)
+    {
+      motorL.write(90);
+      motorR.write(90 + mag_diff_values);
+    }
+
+    
 //  if((myIMU.yaw) > 5)
 //  {
 //     motorL.write(100);
