@@ -63,7 +63,7 @@ void updatePressureSensorCallback();
 Task readGamepad(50, TASK_FOREVER, &readGamepadCallback);
 Task updateMotorB(125, TASK_FOREVER, &updateMotorBCallback);
 Task updateMotorLR(125, TASK_FOREVER, &updateMotorRLCallback);
-Task updateImuTask(150, TASK_FOREVER, &updateImuCallback);
+Task updateImuTask(500, TASK_FOREVER, &updateImuCallback);
 Task updatePressureSensor(1000, TASK_FOREVER, &updatePressureSensorCallback);
 
 Scheduler runner;
@@ -127,7 +127,7 @@ void updateMotorBCallback() {
   }
   else
   {
-    z_val_diff = (z_current - initial_z) / 5;
+    z_val_diff = (z_current - initial_z) / 3;
     motorB.write(90 + z_val_diff);
   }
 
@@ -138,18 +138,19 @@ void updateMotorRLCallback() {
   
  if(ps2x.Button(PSB_R1)) 
  {
-   Serial.println("R1 being pressed right now");
-   if(x_current > initial_x)
+//   Serial.println("R1 being pressed right now");
+   if(x_current > (initial_x + 10))
    {
-      x_val_diff = (x_current - initial_x) / 5;
-      motorL.write(110);
+      x_val_diff = (x_current - initial_x) / 4;
+      motorL.write(90);
       motorR.write(110 + x_val_diff);
+//      Serial.println(x_val_diff);
     }
-    else if(x_current < initial_x)
+    else if(x_current < (initial_x - 10))
     {
-      x_val_diff = (initial_x - x_current) / 10;
+      x_val_diff = (initial_x - x_current) / 4;
       motorL.write(110 + x_val_diff);
-      motorR.write(110);
+      motorR.write(90);
     }
     else
     {
@@ -159,18 +160,20 @@ void updateMotorRLCallback() {
    }
    else if(ps2x.Button(PSB_L1))
    {
-    Serial.println("L1 being pressed right now");
-    if(x_current < initial_x)
+//    Serial.println("L1 being pressed right now");
+    if(x_current < (initial_x - 10))
     {
-      x_val_diff = (initial_x - x_current) / 10;
-      motorL.write(70);
+      x_val_diff = (initial_x - x_current) / 4;
+      motorL.write(90);
       motorR.write(70 - x_val_diff);
+//      Serial.println(x_val_diff);
     }
-    else if(x_current > initial_x)
+    else if(x_current > (initial_x + 10))
     {
-      x_val_diff = (x_current - initial_x) / 10;
+      x_val_diff = (x_current - initial_x) / 4;
       motorL.write(70 - x_val_diff);
-      motorR.write(70);
+      motorR.write(90);
+//      Serial.println(x_val_diff);
     }
     else
     {
@@ -274,19 +277,19 @@ void updateImuCallback() {
     } // if (myIMU.delt_t > 500)
 
 
-    mag_diff_values = mag_pid.calculateOutput(0, myIMU.yaw);
-    Serial.println(mag_diff_values);
+//    mag_diff_values = mag_pid.calculateOutput(0, myIMU.yaw);
+//    Serial.println(mag_diff_values);
     
-    if(mag_diff_values < 0)
-    {
-      motorL.write(90 - mag_diff_values);
-      motorR.write(90);
-    }
-    else if (mag_diff_values > 0)
-    {
-      motorL.write(90);
-      motorR.write(90 + mag_diff_values);
-    }
+//    if(mag_diff_values < 0)
+//    {
+//      motorL.write(90 - mag_diff_values);
+//      motorR.write(90);
+//    }
+//    else if (mag_diff_values > 0)
+//    {
+//      motorL.write(90);
+//      motorR.write(90 + mag_diff_values);
+//    }
 
     
 //  if((myIMU.yaw) > 5)
@@ -336,6 +339,15 @@ void updatePressureSensorCallback() {
   
   Serial.print("Altitude change (m) = ");
   Serial.println(altitude_delta); 
+
+//  if(altitude_delta > -450)
+//  {
+//    motorB.write(120);
+//  }
+//  else if (altitude_delta < -550)
+//  {
+//    motorB.write(60);
+//  }
 }
 
 
@@ -423,9 +435,9 @@ void setup()
     if (d != 0x48)
     {
       // Communication failed, stop here
-      Serial.println(F("Communication failed, abort!"));
-      Serial.flush();
-      abort();
+//      Serial.println(F("Communication failed, abort!"));
+//      Serial.flush();
+//      abort();
     }
 
     // Get magnetometer calibration from AK8963 ROM
@@ -487,10 +499,10 @@ void setup()
     Serial.print("Could not connect to MPU9250: 0x");
     Serial.println(c, HEX);
 
-    // Communication failed, stop here
-    Serial.println(F("Communication failed, abort!"));
-    Serial.flush();
-    abort();
+//    // Communication failed, stop here
+//    Serial.println(F("Communication failed, abort!"));
+//    Serial.flush();
+//    abort();
   }
   // IMU Setup *****************************************************************************************************************************************
 
