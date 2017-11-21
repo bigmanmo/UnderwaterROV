@@ -23,9 +23,9 @@
 #define AHRS true
 
 volatile PS2X ps2x;
-double kp=0.01, ki=0.005, kd=0.005;
+double kp=0.2, ki=0.015, kd=0.15;
 
-PID mag_pid(kp, ki, kd, 5, -5);
+PID mag_pid(kp, ki, kd, -100, 100);
 int mag_diff_values = 0;
 
 MS5803 sensor(ADDRESS_HIGH);
@@ -63,8 +63,8 @@ void updatePressureSensorCallback();
 Task readGamepad(50, TASK_FOREVER, &readGamepadCallback);
 Task updateMotorB(125, TASK_FOREVER, &updateMotorBCallback);
 Task updateMotorLR(125, TASK_FOREVER, &updateMotorRLCallback);
-Task updateImuTask(500, TASK_FOREVER, &updateImuCallback);
-Task updatePressureSensor(1000, TASK_FOREVER, &updatePressureSensorCallback);
+Task updateImuTask(10, TASK_FOREVER, &updateImuCallback);
+Task updatePressureSensor(400, TASK_FOREVER, &updatePressureSensorCallback);
 
 Scheduler runner;
 
@@ -127,7 +127,23 @@ void updateMotorBCallback() {
   }
   else
   {
-    z_val_diff = (z_current - initial_z) / 3;
+    z_val_diff = (z_current - initial_z) / 2;
+    if(z_val_diff > 70)
+    {
+      z_val_diff = 70;
+    }
+    else if(z_val_diff < -70)
+    {
+      z_val_diff = -70;
+    }
+//    if (z_current > initial_z)
+//    {
+//      motorR.write(140);
+//    }
+//    else if (z_current < initial_z)
+//    {
+//      motorL.write(140);
+//    }
     motorB.write(90 + z_val_diff);
   }
 
@@ -139,46 +155,78 @@ void updateMotorRLCallback() {
  if(ps2x.Button(PSB_R1)) 
  {
 //   Serial.println("R1 being pressed right now");
-   if(x_current > (initial_x + 10))
+   if(x_current > initial_x)
    {
-      x_val_diff = (x_current - initial_x) / 4;
-      motorL.write(90);
-      motorR.write(110 + x_val_diff);
-//      Serial.println(x_val_diff);
-    }
-    else if(x_current < (initial_x - 10))
+    x_val_diff = (x_current - initial_x) / 4;
+    if(x_current > (initial_x + 20))
     {
-      x_val_diff = (initial_x - x_current) / 4;
-      motorL.write(110 + x_val_diff);
+      motorL.write(120 + x_val_diff);
       motorR.write(90);
+//      Serial.println(x_val_diff);
     }
     else
     {
-      motorR.write(110);
-      motorL.write(110);
+      motorL.write(120 + x_val_diff);
+      motorR.write(120);
+    }
+   }
+   else if(x_current < initial_x)
+   {
+    x_val_diff = (initial_x - x_current) / 4;
+    if(x_current < (initial_x - 20))
+    {
+      motorL.write(90);
+      motorR.write(120 + x_val_diff);
+    }
+    else
+    {
+      motorL.write(120);
+      motorR.write(120 + x_val_diff);
+    }
+   }
+   else
+    {
+      motorR.write(120);
+      motorL.write(120);
     }
    }
    else if(ps2x.Button(PSB_L1))
    {
 //    Serial.println("L1 being pressed right now");
-    if(x_current < (initial_x - 10))
+    if(x_current < initial_x)
     {
       x_val_diff = (initial_x - x_current) / 4;
-      motorL.write(90);
-      motorR.write(70 - x_val_diff);
-//      Serial.println(x_val_diff);
+      if(x_current < (initial_x - 20))
+      {
+        motorL.write(90);
+        motorR.write(60 - x_val_diff);
+  //      Serial.println(x_val_diff);
+      } 
+      else
+      {
+        motorL.write(60);
+        motorR.write(60 - x_val_diff);
+      }
     }
-    else if(x_current > (initial_x + 10))
+    else if(x_current > initial_x)
     {
       x_val_diff = (x_current - initial_x) / 4;
-      motorL.write(70 - x_val_diff);
+      if(x_current > (initial_x + 20))
+      {
+      motorL.write(60 - x_val_diff);
       motorR.write(90);
+      }
+      else
+      {
+        motorL.write(60 - x_val_diff);
+        motorR.write(60);
+      }
 //      Serial.println(x_val_diff);
     }
     else
     {
-      motorR.write(70);
-      motorL.write(70);
+      motorR.write(60);
+      motorL.write(60);
     }
    }
    if(!ps2x.Button(PSB_L1) && !ps2x.Button(PSB_R1))
@@ -228,13 +276,13 @@ void updateImuCallback() {
   MahonyQuaternionUpdate(myIMU.ax, myIMU.ay, myIMU.az, myIMU.gx * DEG_TO_RAD,
                          myIMU.gy * DEG_TO_RAD, myIMU.gz * DEG_TO_RAD, myIMU.my,
                          myIMU.mx, myIMU.mz, myIMU.deltat);
-  filter.updateIMU(myIMU.gx, myIMU.gy, myIMU.gz, myIMU.ax, myIMU.ay, myIMU.az);
+  filter.update(myIMU.gx, myIMU.gy, myIMU.gz, myIMU.ax, myIMU.ay, myIMU.az);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
     myIMU.delt_t = millis() - myIMU.count;
 
     // update LCD once per half-second independent of read rate
-    if (myIMU.delt_t > 500)
+    if (myIMU.delt_t > 100)
     {
       myIMU.yaw   = atan2(2.0f * (*(getQ()+1) * *(getQ()+2) + *getQ()
                     * *(getQ()+3)), *getQ() * *getQ() + *(getQ()+1)
@@ -249,9 +297,6 @@ void updateImuCallback() {
       myIMU.pitch *= RAD_TO_DEG;
       myIMU.yaw   *= RAD_TO_DEG;
 
-      // Declination of SparkFun Electronics (40°05'26.6"N 105°11'05.9"W) is
-      //   8° 30' E  ± 0° 21' (or 8.5°) on 2016-07-19
-      // - http://www.ngdc.noaa.gov/geomag-web/#declination
       myIMU.yaw  -= 9.62;
       myIMU.roll *= RAD_TO_DEG;
 
@@ -274,12 +319,36 @@ void updateImuCallback() {
       myIMU.count = millis();
       myIMU.sumCount = 0;
       myIMU.sum = 0;
+      mag_diff_values = mag_pid.calculateOutput(80, myIMU.yaw);
+      if(myIMU.yaw > 82 || myIMU.yaw < 78)
+      {
+        if(mag_diff_values < 0)
+        {
+          if(mag_diff_values < -40)
+          {
+            mag_diff_values = -40;
+          }
+          motorL.write(90 - mag_diff_values/2);
+          motorR.write(90);
+        }
+        else if (mag_diff_values > 0)
+        {
+          if(mag_diff_values > 40)
+          {
+           mag_diff_values = 40;
+          }
+          motorL.write(90);
+          motorR.write(90 + mag_diff_values/2);
+        }
+         Serial.println(mag_diff_values);
+        }
+      
     } // if (myIMU.delt_t > 500)
 
 
-//    mag_diff_values = mag_pid.calculateOutput(0, myIMU.yaw);
+//    mag_diff_values = mag_pid.calculateOutput(80, myIMU.yaw);
 //    Serial.println(mag_diff_values);
-    
+//    
 //    if(mag_diff_values < 0)
 //    {
 //      motorL.write(90 - mag_diff_values);
@@ -340,14 +409,14 @@ void updatePressureSensorCallback() {
   Serial.print("Altitude change (m) = ");
   Serial.println(altitude_delta); 
 
-//  if(altitude_delta > -450)
-//  {
-//    motorB.write(120);
-//  }
-//  else if (altitude_delta < -550)
-//  {
-//    motorB.write(60);
-//  }
+  if(altitude_delta > -850)
+  {
+    motorB.write(150);
+  }
+  else if (altitude_delta < -1200)
+  {
+    motorB.write(30);
+  }
 }
 
 
@@ -375,15 +444,6 @@ void setup()
   //setup pins and settings: GamePad(clock, command, attention, data, Pressures?, Rumble?) check for error
   ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
   ps2x.read_gamepad(false, vibrate);
-//  initial_x = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
-//  Serial.println("initial x");
-//  Serial.println(initial_x);
-//  initial_y = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
-//  Serial.println("initial y");
-//  Serial.println(initial_y);
-//  initial_z = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
-//  Serial.println("initial z");
-//  Serial.println(initial_z);
 
   // MOTOR Setup **************************************************************************************************************************************
 
