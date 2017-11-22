@@ -17,16 +17,18 @@
 #define pressures   false
 #define rumble      false
 
-#define forward_spin 95
-#define backward_spin 80
-#define SerialDebug true  // Set to true to get Serial output for debugging
-#define AHRS true
+#define MAX_THRUST 120
+#define MAX_REVERSE_THRUST 60
+#define STOP_MOTOR 90
+#define SerialDebug false  // Set to true to get Serial output for debugging
+#define AHRS false
 
 volatile PS2X ps2x;
-double kp=0.2, ki=0.015, kd=0.15;
+double kp=3, ki=0, kd=1.5;
 
-PID mag_pid(kp, ki, kd, -100, 100);
-int mag_diff_values = 0;
+PID mag_pid(kp, ki, kd, 0, 180);
+PID pressure_pid(kp, ki, kd, 0, 1400);
+float mag_diff_values = 0;
 
 MS5803 sensor(ADDRESS_HIGH);
 
@@ -41,6 +43,7 @@ byte vibrate = 0;
 float temperature_c, temperature_f;
 double pressure_abs, pressure_relative, altitude_delta, pressure_baseline;
 double base_altitude = 335.0;
+float compass_val = 90;
 
 volatile int initial_x = 0;
 volatile int initial_y = 0;
@@ -51,6 +54,11 @@ volatile int z_val_diff = 0;
 volatile int x_current = 0;
 volatile int y_current = 0;
 volatile int z_current = 0;
+int sign = 1;
+int motorRSpeed = STOP_MOTOR;
+int motorLSpeed = STOP_MOTOR;
+int motorBSpeed = STOP_MOTOR;
+
 
 // Callback methods prototypes
 void readGamepadCallback();
@@ -77,7 +85,7 @@ void readGamepadCallback() {
   y_current = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
 //  Serial.println("current y");
 //  Serial.println(y_current);
-  z_current = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+  z_current = map(ps2x.Analog(PSS_RY), 255, 0, 180, 0);
 //  Serial.println("current z");
 //  Serial.println(z_current);
   if(ps2x.ButtonPressed(PSB_START))
@@ -88,7 +96,7 @@ void readGamepadCallback() {
     initial_y = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
     Serial.println("initial y");
     Serial.println(initial_y);
-    initial_z = map(ps2x.Analog(PSS_RY), 0, 255, 0, 180);
+    initial_z = map(ps2x.Analog(PSS_RY), 0, 255, 180, 0);
     Serial.println("initial z");
     Serial.println(initial_z);
     updateMotorB.enable();
@@ -117,122 +125,140 @@ void readGamepadCallback() {
 }
 
 void updateMotorBCallback() {
+  //Dead zone for the right analog stick ***********************************
   if((z_current - initial_z) < 25 && (z_current - initial_z) >= 0)
   {
-   motorB.write(90); 
+    motorBSpeed = rampMotor(motorBSpeed, STOP_MOTOR, 5);
+    motorB.write(motorBSpeed);
   }
   else if((z_current - initial_z) > -25 && (z_current-initial_z) < 0)
   {
-    motorB.write(90);
+    motorBSpeed = rampMotor(motorBSpeed, STOP_MOTOR, 5);
+    motorB.write(motorBSpeed);
   }
   else
   {
-    z_val_diff = (z_current - initial_z) / 2;
-    if(z_val_diff > 70)
+    //Limiting the analog values
+    if(z_current > 110)
     {
-      z_val_diff = 70;
+      z_current = 110;
     }
-    else if(z_val_diff < -70)
+    else if (z_current < 20)
     {
-      z_val_diff = -70;
+      z_current = 20;
     }
-//    if (z_current > initial_z)
+    if(z_current < initial_z)
+    {
+      z_current = z_current - initial_z;
+//      z_current = z_current * -1;
+    }
+    motorBSpeed = rampMotor(motorBSpeed, 90 - z_current/6, 3);
+//    z_val_diff = (z_current - initial_z) / 2;
+//    if(z_val_diff > 50)
 //    {
-//      motorR.write(140);
+//      z_val_diff = 50;
 //    }
-//    else if (z_current < initial_z)
+//    else if(z_val_diff < -50)
 //    {
-//      motorL.write(140);
+//      z_val_diff = -50;
 //    }
-    motorB.write(90 + z_val_diff);
+    Serial.println(motorBSpeed);
+    motorB.write(motorBSpeed);
   }
 
-//  Serial.println(90 + z_val_diff);
+//  Serial.println(STOP_MOTOR + z_val_diff);
 }
 
 void updateMotorRLCallback() {
   
  if(ps2x.Button(PSB_R1)) 
  {
+   motorLSpeed = rampMotor(motorLSpeed, MAX_THRUST, 5);
+   motorRSpeed = rampMotor(motorRSpeed, MAX_THRUST, 5);
 //   Serial.println("R1 being pressed right now");
    if(x_current > initial_x)
    {
-    x_val_diff = (x_current - initial_x) / 4;
-    if(x_current > (initial_x + 20))
+    x_val_diff = (x_current - initial_x) / 3;
+    if(x_current > (initial_x + 40))
     {
-      motorL.write(120 + x_val_diff);
-      motorR.write(90);
+      motorL.write(motorLSpeed + x_val_diff);
+      motorR.write(STOP_MOTOR);
 //      Serial.println(x_val_diff);
     }
     else
     {
-      motorL.write(120 + x_val_diff);
-      motorR.write(120);
+      motorL.write(motorLSpeed + x_val_diff);
+      motorR.write(motorRSpeed);
     }
    }
    else if(x_current < initial_x)
    {
     x_val_diff = (initial_x - x_current) / 4;
-    if(x_current < (initial_x - 20))
+    if(x_current < (initial_x - 40))
     {
-      motorL.write(90);
-      motorR.write(120 + x_val_diff);
+      motorL.write(STOP_MOTOR);
+      motorR.write(motorRSpeed + x_val_diff);
     }
     else
     {
-      motorL.write(120);
-      motorR.write(120 + x_val_diff);
+      motorL.write(motorLSpeed);
+      motorR.write(motorRSpeed + x_val_diff);
     }
    }
    else
     {
-      motorR.write(120);
-      motorL.write(120);
+      motorR.write(motorLSpeed);
+      motorL.write(motorRSpeed);
     }
    }
    else if(ps2x.Button(PSB_L1))
    {
+    motorLSpeed = rampMotor(motorLSpeed, MAX_REVERSE_THRUST, 5);
+    motorRSpeed = rampMotor(motorRSpeed, MAX_REVERSE_THRUST, 5);
 //    Serial.println("L1 being pressed right now");
     if(x_current < initial_x)
     {
-      x_val_diff = (initial_x - x_current) / 4;
-      if(x_current < (initial_x - 20))
+      x_val_diff = (initial_x - x_current) / 3;
+      if(x_current < (initial_x - 40))
       {
-        motorL.write(90);
-        motorR.write(60 - x_val_diff);
+        motorL.write(STOP_MOTOR);
+        motorR.write(motorRSpeed - x_val_diff);
   //      Serial.println(x_val_diff);
       } 
       else
       {
-        motorL.write(60);
-        motorR.write(60 - x_val_diff);
+        motorL.write(motorLSpeed);
+        motorR.write(motorRSpeed - x_val_diff);
       }
     }
     else if(x_current > initial_x)
     {
-      x_val_diff = (x_current - initial_x) / 4;
-      if(x_current > (initial_x + 20))
+      x_val_diff = (x_current - initial_x) / 3;
+      if(x_current > (initial_x + 40))
       {
-      motorL.write(60 - x_val_diff);
-      motorR.write(90);
+      motorL.write(motorLSpeed - x_val_diff);
+      motorR.write(STOP_MOTOR);
       }
       else
       {
-        motorL.write(60 - x_val_diff);
-        motorR.write(60);
+        motorL.write(motorLSpeed - x_val_diff);
+        motorR.write(motorRSpeed);
       }
 //      Serial.println(x_val_diff);
     }
     else
     {
-      motorR.write(60);
-      motorL.write(60);
+      motorR.write(motorRSpeed);
+      motorL.write(motorLSpeed);
     }
    }
    if(!ps2x.Button(PSB_L1) && !ps2x.Button(PSB_R1))
    {
-      motorR.write(90);
-      motorL.write(90);
+        motorRSpeed = rampMotor(motorRSpeed, STOP_MOTOR, 10);
+        motorLSpeed = rampMotor(motorLSpeed, STOP_MOTOR, 10);
+        motorR.write(motorRSpeed);
+        motorL.write(motorLSpeed);
+
    }
 }
 
@@ -276,13 +302,13 @@ void updateImuCallback() {
   MahonyQuaternionUpdate(myIMU.ax, myIMU.ay, myIMU.az, myIMU.gx * DEG_TO_RAD,
                          myIMU.gy * DEG_TO_RAD, myIMU.gz * DEG_TO_RAD, myIMU.my,
                          myIMU.mx, myIMU.mz, myIMU.deltat);
-  filter.update(myIMU.gx, myIMU.gy, myIMU.gz, myIMU.ax, myIMU.ay, myIMU.az);
+  filter.updateIMU(myIMU.gx, myIMU.gy, myIMU.gz, myIMU.ax, myIMU.ay, myIMU.az);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
     myIMU.delt_t = millis() - myIMU.count;
 
     // update LCD once per half-second independent of read rate
-    if (myIMU.delt_t > 100)
+    if (myIMU.delt_t > 50)
     {
       myIMU.yaw   = atan2(2.0f * (*(getQ()+1) * *(getQ()+2) + *getQ()
                     * *(getQ()+3)), *getQ() * *getQ() + *(getQ()+1)
@@ -319,30 +345,36 @@ void updateImuCallback() {
       myIMU.count = millis();
       myIMU.sumCount = 0;
       myIMU.sum = 0;
-      mag_diff_values = mag_pid.calculateOutput(80, myIMU.yaw);
-      if(myIMU.yaw > 82 || myIMU.yaw < 78)
-      {
-        if(mag_diff_values < 0)
+//      mag_diff_values = map(mag_pid.calculateOutput(80, myIMU.yaw), -1, 1, 0, 180);
+      mag_diff_values = mag_pid.calculateOutput(110, myIMU.yaw);
+      Serial.print("Whatever the fuck this thing is: ");
+      Serial.println(mag_diff_values);
+//      Serial.println(myIMU.yaw);
+//      Serial.println(filter.getYaw());
+      if(mag_diff_values < 10)
         {
-          if(mag_diff_values < -40)
-          {
-            mag_diff_values = -40;
-          }
-          motorL.write(90 - mag_diff_values/2);
-          motorR.write(90);
+//          if(mag_diff_values < -40)
+//          {
+//            mag_diff_values = -40;
+//          }
+          motorL.write(STOP_MOTOR - mag_diff_values / 5);
+          motorR.write(STOP_MOTOR);
         }
-        else if (mag_diff_values > 0)
+        else if (mag_diff_values > 10)
         {
-          if(mag_diff_values > 40)
-          {
-           mag_diff_values = 40;
-          }
-          motorL.write(90);
-          motorR.write(90 + mag_diff_values/2);
+//          if(mag_diff_values > 40)
+//          {
+//           mag_diff_values = 40;
+//          }
+          motorL.write(STOP_MOTOR);
+          motorR.write(STOP_MOTOR + mag_diff_values / 5);
         }
-         Serial.println(mag_diff_values);
+//         Serial.println(mag_diff_values);
+        else
+        {
+          motorL.write(110);
+          motorR.write(110);
         }
-      
     } // if (myIMU.delt_t > 500)
 
 
@@ -351,30 +383,30 @@ void updateImuCallback() {
 //    
 //    if(mag_diff_values < 0)
 //    {
-//      motorL.write(90 - mag_diff_values);
-//      motorR.write(90);
+//      motorL.write(STOP_MOTOR - mag_diff_values);
+//      motorR.write(STOP_MOTOR);
 //    }
 //    else if (mag_diff_values > 0)
 //    {
-//      motorL.write(90);
-//      motorR.write(90 + mag_diff_values);
+//      motorL.write(STOP_MOTOR);
+//      motorR.write(STOP_MOTOR + mag_diff_values);
 //    }
 
     
 //  if((myIMU.yaw) > 5)
 //  {
 //     motorL.write(100);
-//     motorR.write(90);
+//     motorR.write(STOP_MOTOR);
 //  }
 //  else if((myIMU.yaw) < -5)
 //  {
 //     motorR.write(100);
-//     motorL.write(90);
+//     motorL.write(STOP_MOTOR);
 //  }
 //  else
 //  {
-//    motorR.write(90);
-//    motorL.write(90);
+//    motorR.write(STOP_MOTOR);
+//    motorL.write(STOP_MOTOR);
 //  }
 }
 
@@ -409,14 +441,14 @@ void updatePressureSensorCallback() {
   Serial.print("Altitude change (m) = ");
   Serial.println(altitude_delta); 
 
-  if(altitude_delta > -850)
-  {
-    motorB.write(150);
-  }
-  else if (altitude_delta < -1200)
-  {
-    motorB.write(30);
-  }
+//  if(altitude_delta > -850)
+//  {
+//    motorB.write(100);
+//  }
+//  else if (altitude_delta < -1200)
+//  {
+//    motorB.write(80);
+//  }
 }
 
 
@@ -429,15 +461,14 @@ void setup()
   motorR.attach(9);
   motorB.attach(10);
 
-  // Initialize motors to lowest value
-  motorL.write(90);
-  motorR.write(90);
-  motorB.write(90);
+  // Initialize motors to stop value
+  motorL.write(STOP_MOTOR);
+  motorR.write(STOP_MOTOR);
+  motorB.write(STOP_MOTOR);
 
   // Required for I/O from Serial monitor
  
   Serial.begin(9600);
-//  Serial.println("before delay");
   delay(300);  //added delay to give wireless ps2 module some time to startup, before configuring it
    
   
@@ -598,7 +629,7 @@ void loop()
 
 
 
- double sealevel(double P, double A)
+double sealevel(double P, double A)
 // Given a pressure P (mbar) taken at a specific altitude (meters),
 // return the equivalent pressure (mbar) at sea level.
 // This produces pressure readings that can be used for weather measurements.
@@ -613,5 +644,31 @@ double altitude(double P, double P0)
 {
   return(44330.0*(1-pow(P/P0,1/5.255)));
 }
-  
+
+int rampMotor(int current_value, int end_value, int step_value)
+{
+  if(end_value < current_value)
+  {
+    sign = -1;
+  }
+  else
+  {
+    sign = 1;
+  }
+  int new_speed = current_value + step_value*sign;
+  if(end_value*sign < new_speed*sign)
+  {
+    return end_value;
+  }
+  else
+  {
+    return new_speed;
+  }
+  return current_value;
+}
+
+//void runningAverage()
+//{
+//  
+//}
 
