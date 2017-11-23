@@ -43,7 +43,9 @@ byte vibrate = 0;
 float temperature_c, temperature_f;
 double pressure_abs, pressure_relative, altitude_delta, pressure_baseline;
 double base_altitude = 335.0;
-float compass_val = 90;
+float compass_val = 99999;
+long average_compass_val = 0;
+long long cntYaw = 101;
 
 volatile int initial_x = 0;
 volatile int initial_y = 0;
@@ -91,14 +93,14 @@ void readGamepadCallback() {
   if(ps2x.ButtonPressed(PSB_START))
   {
     initial_x = map(ps2x.Analog(PSS_LX), 0, 255, 0, 180);
-    Serial.println("initial x");
-    Serial.println(initial_x);
+//    Serial.println("initial x");
+//    Serial.println(initial_x);
     initial_y = map(ps2x.Analog(PSS_LY), 0, 255, 0, 180);
-    Serial.println("initial y");
-    Serial.println(initial_y);
+//    Serial.println("initial y");
+//    Serial.println(initial_y);
     initial_z = map(ps2x.Analog(PSS_RY), 0, 255, 180, 0);
-    Serial.println("initial z");
-    Serial.println(initial_z);
+//    Serial.println("initial z");
+//    Serial.println(initial_z);
     updateMotorB.enable();
     updateMotorLR.enable();
     updateImuTask.disable();
@@ -126,13 +128,17 @@ void readGamepadCallback() {
 
 void updateMotorBCallback() {
   //Dead zone for the right analog stick ***********************************
-  if((z_current - initial_z) < 25 && (z_current - initial_z) >= 0)
+//  Serial.println(z_current - initial_z);
+  Serial.println(z_current);
+  if(z_current < 65  && z_current > 0)
   {
+//    Serial.println("you can do it buddy you got this!");
     motorBSpeed = rampMotor(motorBSpeed, STOP_MOTOR, 5);
     motorB.write(motorBSpeed);
   }
-  else if((z_current - initial_z) > -25 && (z_current-initial_z) < 0)
+  else if(z_current > 115 && z_current < 0)
   {
+//    Serial.println("fuck this shit ass project and fuck water");
     motorBSpeed = rampMotor(motorBSpeed, STOP_MOTOR, 5);
     motorB.write(motorBSpeed);
   }
@@ -149,10 +155,14 @@ void updateMotorBCallback() {
     }
     if(z_current < initial_z)
     {
-      z_current = z_current - initial_z;
+//      z_current = z_current - initial_z;
+      motorBSpeed = rampMotor(motorBSpeed, 90 - (z_current - initial_z)/6, 1);
 //      z_current = z_current * -1;
     }
-    motorBSpeed = rampMotor(motorBSpeed, 90 - z_current/6, 3);
+    else
+    {
+      motorBSpeed = rampMotor(motorBSpeed, 90 - z_current/6, 1);
+    }
 //    z_val_diff = (z_current - initial_z) / 2;
 //    if(z_val_diff > 50)
 //    {
@@ -162,7 +172,7 @@ void updateMotorBCallback() {
 //    {
 //      z_val_diff = -50;
 //    }
-    Serial.println(motorBSpeed);
+//    Serial.println(motorBSpeed);
     motorB.write(motorBSpeed);
   }
 
@@ -219,7 +229,7 @@ void updateMotorRLCallback() {
     if(x_current < initial_x)
     {
       x_val_diff = (initial_x - x_current) / 3;
-      if(x_current < (initial_x - 40))
+      if(x_current < (initial_x - 30))
       {
         motorL.write(STOP_MOTOR);
         motorR.write(motorRSpeed - x_val_diff);
@@ -234,7 +244,7 @@ void updateMotorRLCallback() {
     else if(x_current > initial_x)
     {
       x_val_diff = (x_current - initial_x) / 3;
-      if(x_current > (initial_x + 40))
+      if(x_current > (initial_x + 30))
       {
       motorL.write(motorLSpeed - x_val_diff);
       motorR.write(STOP_MOTOR);
@@ -307,6 +317,7 @@ void updateImuCallback() {
     // Serial print and/or display at 0.5 s rate independent of data rates
     myIMU.delt_t = millis() - myIMU.count;
 
+
     // update LCD once per half-second independent of read rate
     if (myIMU.delt_t > 50)
     {
@@ -324,6 +335,7 @@ void updateImuCallback() {
       myIMU.yaw   *= RAD_TO_DEG;
 
       myIMU.yaw  -= 9.62;
+      myIMU.yaw  += 180;
       myIMU.roll *= RAD_TO_DEG;
 
       if(SerialDebug)
@@ -331,6 +343,8 @@ void updateImuCallback() {
 //        Serial.print("Yaw, Pitch, Roll: ");
         Serial.print("Yaw: ");
         Serial.println(myIMU.yaw, 2);
+        cntYaw = ps2x.ButtonPressed(PSB_SELECT) ? 0 : cntYaw;
+        compass_val = (cntYaw++ == 100) ? myIMU.yaw : compass_val;
 //        Serial.print(", ");
 //        Serial.print(myIMU.pitch, 2);
 //        Serial.print(", ");
@@ -340,18 +354,26 @@ void updateImuCallback() {
 //        Serial.print((float)myIMU.sumCount / myIMU.sum, 2);
 //        Serial.println(" Hz");
       }
-
-
+      cntYaw = ps2x.ButtonPressed(PSB_SELECT) ? 0 : cntYaw;
+      compass_val = (cntYaw++ == 100) ? myIMU.yaw : compass_val;
       myIMU.count = millis();
       myIMU.sumCount = 0;
       myIMU.sum = 0;
+      if(compass_val != 99999)
+      {
+        average_compass_val = runningAverage(myIMU.yaw);
 //      mag_diff_values = map(mag_pid.calculateOutput(80, myIMU.yaw), -1, 1, 0, 180);
-      mag_diff_values = mag_pid.calculateOutput(110, myIMU.yaw);
-      Serial.print("Whatever the fuck this thing is: ");
-      Serial.println(mag_diff_values);
+        mag_diff_values = mag_pid.calculateOutput(compass_val, average_compass_val);
+//      Serial.print("AND THIS SHIT IS FUCK: ");
+//      Serial.println(compass_val);cntYaw = ps2x.ButtonPressed(PSB_SELECT) ? 0 : cntYaw;
+        compass_val = (cntYaw++ == 100) ? myIMU.yaw : compass_val;
+//      Serial.println(average_compass_val);  
+//      Serial.print("Whatever the fuck this thing is: ");
+//      Serial.println(mag_diff_values);
 //      Serial.println(myIMU.yaw);
 //      Serial.println(filter.getYaw());
-      if(mag_diff_values < 10)
+        Serial.println(mag_diff_values);
+      if(mag_diff_values > 5)
         {
 //          if(mag_diff_values < -40)
 //          {
@@ -360,7 +382,7 @@ void updateImuCallback() {
           motorL.write(STOP_MOTOR - mag_diff_values / 5);
           motorR.write(STOP_MOTOR);
         }
-        else if (mag_diff_values > 10)
+        else if (mag_diff_values < -5)
         {
 //          if(mag_diff_values > 40)
 //          {
@@ -369,13 +391,13 @@ void updateImuCallback() {
           motorL.write(STOP_MOTOR);
           motorR.write(STOP_MOTOR + mag_diff_values / 5);
         }
-//         Serial.println(mag_diff_values);
         else
         {
           motorL.write(110);
           motorR.write(110);
         }
-    } // if (myIMU.delt_t > 500)
+      }
+     } // if (myIMU.delt_t > 500)
 
 
 //    mag_diff_values = mag_pid.calculateOutput(80, myIMU.yaw);
@@ -443,11 +465,11 @@ void updatePressureSensorCallback() {
 
 //  if(altitude_delta > -850)
 //  {
-//    motorB.write(100);
+//    motorB.write(80);
 //  }
 //  else if (altitude_delta < -1200)
 //  {
-//    motorB.write(80);
+//    motorB.write(95);
 //  }
 }
 
@@ -667,8 +689,22 @@ int rampMotor(int current_value, int end_value, int step_value)
   return current_value;
 }
 
-//void runningAverage()
-//{
-//  
-//}
+long runningAverage(int M)
+{
+  #define LM_SIZE 10
+  static int LM[LM_SIZE];      // LastMeasurements
+  static byte index = 0;
+  static long sum = 0;
+  static byte count = 0;
+
+  // keep sum updated to improve speed.
+  sum -= LM[index];
+  LM[index] = M;
+  sum += LM[index];
+  index++;
+  index = index % LM_SIZE;
+  if (count < LM_SIZE) count++;
+
+  return sum / count;
+}
 
