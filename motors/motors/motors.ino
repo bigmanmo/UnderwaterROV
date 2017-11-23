@@ -7,6 +7,7 @@
 #include "quaternionFilters.h"
 #include "MPU9250.h"
 #include <pid_controller.h>
+#include <rovutils.h>
 
 
 #define PS2_DAT        6  //yellowwhite    
@@ -42,7 +43,7 @@ byte vibrate = 0;
 //Create variables to store results
 float temperature_c, temperature_f;
 double pressure_abs, pressure_relative, altitude_delta, pressure_baseline;
-double base_altitude = 335.0;
+double base_rovUtils.altitude = 335.0;
 float compass_val = 90;
 
 volatile int initial_x = 0;
@@ -54,10 +55,10 @@ volatile int z_val_diff = 0;
 volatile int x_current = 0;
 volatile int y_current = 0;
 volatile int z_current = 0;
-int sign = 1;
 int motorRSpeed = STOP_MOTOR;
 int motorLSpeed = STOP_MOTOR;
 int motorBSpeed = STOP_MOTOR;
+volatile int target_dist = 1300;  //mm
 
 
 // Callback methods prototypes
@@ -128,12 +129,12 @@ void updateMotorBCallback() {
   //Dead zone for the right analog stick ***********************************
   if((z_current - initial_z) < 25 && (z_current - initial_z) >= 0)
   {
-    motorBSpeed = rampMotor(motorBSpeed, STOP_MOTOR, 5);
+    motorBSpeed = rovUtils.rampMotor(motorBSpeed, STOP_MOTOR, 5);
     motorB.write(motorBSpeed);
   }
   else if((z_current - initial_z) > -25 && (z_current-initial_z) < 0)
   {
-    motorBSpeed = rampMotor(motorBSpeed, STOP_MOTOR, 5);
+    motorBSpeed = rovUtils.rampMotor(motorBSpeed, STOP_MOTOR, 5);
     motorB.write(motorBSpeed);
   }
   else
@@ -152,7 +153,7 @@ void updateMotorBCallback() {
       z_current = z_current - initial_z;
 //      z_current = z_current * -1;
     }
-    motorBSpeed = rampMotor(motorBSpeed, 90 - z_current/6, 3);
+    motorBSpeed = rovUtils.rampMotor(motorBSpeed, 90 - z_current/6, 3);
 //    z_val_diff = (z_current - initial_z) / 2;
 //    if(z_val_diff > 50)
 //    {
@@ -173,8 +174,8 @@ void updateMotorRLCallback() {
   
  if(ps2x.Button(PSB_R1)) 
  {
-   motorLSpeed = rampMotor(motorLSpeed, MAX_THRUST, 5);
-   motorRSpeed = rampMotor(motorRSpeed, MAX_THRUST, 5);
+   motorLSpeed = rovUtils.rampMotor(motorLSpeed, MAX_THRUST, 5);
+   motorRSpeed = rovUtils.rampMotor(motorRSpeed, MAX_THRUST, 5);
 //   Serial.println("R1 being pressed right now");
    if(x_current > initial_x)
    {
@@ -213,8 +214,8 @@ void updateMotorRLCallback() {
    }
    else if(ps2x.Button(PSB_L1))
    {
-    motorLSpeed = rampMotor(motorLSpeed, MAX_REVERSE_THRUST, 5);
-    motorRSpeed = rampMotor(motorRSpeed, MAX_REVERSE_THRUST, 5);
+    motorLSpeed = rovUtils.rampMotor(motorLSpeed, MAX_REVERSE_THRUST, 5);
+    motorRSpeed = rovUtils.rampMotor(motorRSpeed, MAX_REVERSE_THRUST, 5);
 //    Serial.println("L1 being pressed right now");
     if(x_current < initial_x)
     {
@@ -254,8 +255,8 @@ void updateMotorRLCallback() {
    }
    if(!ps2x.Button(PSB_L1) && !ps2x.Button(PSB_R1))
    {
-        motorRSpeed = rampMotor(motorRSpeed, STOP_MOTOR, 10);
-        motorLSpeed = rampMotor(motorLSpeed, STOP_MOTOR, 10);
+        motorRSpeed = rovUtils.rampMotor(motorRSpeed, STOP_MOTOR, 10);
+        motorLSpeed = rovUtils.rampMotor(motorLSpeed, STOP_MOTOR, 10);
         motorR.write(motorRSpeed);
         motorL.write(motorLSpeed);
 
@@ -424,13 +425,13 @@ void updatePressureSensorCallback() {
   
   // Let's do something interesting with our data.
   
-  // Convert abs pressure with the help of altitude into relative pressure
+  // Convert abs pressure with the help of rovUtils.altitude into relative pressure
   // This is used in Weather stations.
-  pressure_relative = sealevel(pressure_abs, base_altitude);
+  pressure_relative = rovUtils.seaLevel(pressure_abs, base_rovUtils.altitude);
   
   // Taking our baseline pressure at the beginning we can find an approximate
-  // change in altitude based on the differences in pressure.   
-  altitude_delta = altitude(pressure_abs , pressure_baseline);
+  // change in rovUtils.altitude based on the differences in pressure.   
+  altitude_delta = -1 * rovUtils.altitude(pressure_abs , pressure_baseline);
 
   Serial.print("Pressure abs (mbar)= ");
   Serial.println(pressure_abs);
@@ -438,17 +439,18 @@ void updatePressureSensorCallback() {
   Serial.print("Pressure relative (mbar)= ");
   Serial.println(pressure_relative); 
   
-  Serial.print("Altitude change (m) = ");
-  Serial.println(altitude_delta); 
+  Serial.print("rovUtils.altitude change (m) = ");
+  Serial.println(altitude_delta);
+  
+  if (altitude_delta < target_dist) {
+    //go up motherfucker
+    motorB.write(100);
+  } else if (altitude_delta > target_dist) {
+    //go down MOTHERFUCKER
+    motorB.write(80);
+  }
 
-//  if(altitude_delta > -850)
-//  {
-//    motorB.write(100);
-//  }
-//  else if (altitude_delta < -1200)
-//  {
-//    motorB.write(80);
-//  }
+  target_dist = target_dist > 15 ? (target_dist - 14/*mm*/) : 15;
 }
 
 
@@ -623,52 +625,7 @@ void setup()
 
 void loop()
 {
- runner.execute();
+  runner.execute();
    //delay(1000);
 }
-
-
-
-double sealevel(double P, double A)
-// Given a pressure P (mbar) taken at a specific altitude (meters),
-// return the equivalent pressure (mbar) at sea level.
-// This produces pressure readings that can be used for weather measurements.
-{
-  return(P/pow(1-(A/44330.0),5.255));
-}
-
-
-double altitude(double P, double P0)
-// Given a pressure measurement P (mbar) and the pressure at a baseline P0 (mbar),
-// return altitude (meters) above baseline.
-{
-  return(44330.0*(1-pow(P/P0,1/5.255)));
-}
-
-int rampMotor(int current_value, int end_value, int step_value)
-{
-  if(end_value < current_value)
-  {
-    sign = -1;
-  }
-  else
-  {
-    sign = 1;
-  }
-  int new_speed = current_value + step_value*sign;
-  if(end_value*sign < new_speed*sign)
-  {
-    return end_value;
-  }
-  else
-  {
-    return new_speed;
-  }
-  return current_value;
-}
-
-//void runningAverage()
-//{
-//  
-//}
 
